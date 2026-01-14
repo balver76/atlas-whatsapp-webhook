@@ -1,5 +1,5 @@
 module.exports = async (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "";
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "atlas_verify_12345";
 
   const url = new URL(req.url, "https://example.com");
   const mode = url.searchParams.get("hub.mode");
