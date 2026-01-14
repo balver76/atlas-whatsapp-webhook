@@ -1,26 +1,21 @@
-// Vercel Serverless Function: /api/webhook
 module.exports = async (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "";
 
-  // Meta webhook verify
+  const url = new URL(req.url, "https://example.com");
+  const mode = url.searchParams.get("hub.mode");
+  const token = url.searchParams.get("hub.verify_token");
+  const challenge = url.searchParams.get("hub.challenge");
+
   if (req.method === "GET") {
-    const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
-
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      res.status(200).send(challenge);
-      return;
+      return res.status(200).send(challenge || "");
     }
-    res.status(403).send("Forbidden");
-    return;
+    return res.status(403).send("Forbidden");
   }
 
-  // Incoming webhook events
   if (req.method === "POST") {
-    res.status(200).json({ received: true });
-    return;
+    return res.status(200).json({ received: true });
   }
 
-  res.status(405).send("Method Not Allowed");
+  return res.status(405).send("Method Not Allowed");
 };
