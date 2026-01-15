@@ -12,10 +12,12 @@ module.exports = async (req, res) => {
     }
     return res.status(403).send("Forbidden");
   }
-
-  if (req.method === "POST") {
-    return res.status(200).json({ received: true });
-  }
+if (req.method === "POST") {
+  console.log("✅ Incoming POST webhook!");
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body));
+  return res.status(200).json({ received: true });
+}
 
   return res.status(405).send("Method Not Allowed");
 };
