@@ -1,3 +1,5 @@
+console.log("🔥 WEBHOOK HIT:", req.method, req.url);
+
 module.exports = async (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "atlas_verify_12345";
 
