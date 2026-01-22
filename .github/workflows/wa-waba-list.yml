@@ -14,6 +14,5 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
-
           curl -sS "https://graph.facebook.com/v20.0/me?fields=whatsapp_business_accounts" \
             -H "Authorization: Bearer ${WA_TOKEN}"
