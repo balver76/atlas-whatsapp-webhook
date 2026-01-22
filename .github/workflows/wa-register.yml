@@ -42,36 +42,37 @@ jobs:
           set -euo pipefail
 
           echo "Running step: ${STEP}"
-          echo "Inputs: code_method='${CODE_METHOD}' code='${CODE}' pin_len='${#PIN}'"
+          echo "Inputs: code_method='${CODE_METHOD}' code_len='${#CODE}' pin_len='${#PIN}'"
 
           if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
           if [ -z "${PHONE_NUMBER_ID}" ]; then echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
 
-          # IMPORTANT:
-          # For these endpoints, pass parameters via query string + access_token in URL.
-          # Do NOT rely on JSON body.
-
           if [ "${STEP}" = "request_code" ]; then
             if [ -z "${CODE_METHOD}" ]; then echo "Missing input code_method"; exit 1; fi
 
-            curl -sS -X POST \
-              "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code?code_method=${CODE_METHOD}&language=en_US&access_token=${WA_TOKEN}"
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "code_method=${CODE_METHOD}" \
+              --data-urlencode "language=en_US"
             exit 0
           fi
 
           if [ "${STEP}" = "verify_code" ]; then
             if [ -z "${CODE}" ]; then echo "Missing input code"; exit 1; fi
 
-            curl -sS -X POST \
-              "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code?code=${CODE}&access_token=${WA_TOKEN}"
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "code=${CODE}"
             exit 0
           fi
 
           if [ "${STEP}" = "register" ]; then
             if [ -z "${PIN}" ]; then echo "Missing input pin"; exit 1; fi
 
-            # register still works reliably as JSON body
-            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register?access_token=${WA_TOKEN}" \
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "{\"messaging_product\":\"whatsapp\",\"pin\":\"${PIN}\"}"
             exit 0
