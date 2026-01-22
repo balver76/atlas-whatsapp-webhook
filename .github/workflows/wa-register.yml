@@ -1,0 +1,72 @@
+name: WhatsApp Phone Registration
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "Which step to run: request_code | verify_code | register"
+        required: true
+        default: "request_code"
+      code_method:
+        description: "sms or voice (only used for request_code)"
+        required: false
+        default: "sms"
+      code:
+        description: "6-digit code received by SMS/voice (only for verify_code)"
+        required: false
+        default: ""
+      pin:
+        description: "6-digit two-step verification PIN you choose (only for register)"
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run step
+        env:
+          WA_TOKEN: ${{ secrets.WA_TOKEN }}
+          PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
+          STEP: ${{ inputs.step }}
+          CODE_METHOD: ${{ inputs.code_method }}
+          CODE: ${{ inputs.code }}
+          PIN: ${{ inputs.pin }}
+        run: |
+          set -e
+
+          if [ -z "$WA_TOKEN" ]; then
+            echo "Missing secret WA_TOKEN"; exit 1; fi
+          if [ -z "$PHONE_NUMBER_ID" ]; then
+            echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
+
+          echo "Running step: $STEP"
+
+          if [ "$STEP" = "request_code" ]; then
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"code_method\":\"${CODE_METHOD}\",\"language\":\"en\"}" | jq .
+            exit 0
+          fi
+
+          if [ "$STEP" = "verify_code" ]; then
+            if [ -z "$CODE" ]; then echo "Missing input code"; exit 1; fi
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"code\":\"${CODE}\"}" | jq .
+            exit 0
+          fi
+
+          if [ "$STEP" = "register" ]; then
+            if [ -z "$PIN" ]; then echo "Missing input pin"; exit 1; fi
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"messaging_product\":\"whatsapp\",\"pin\":\"${PIN}\"}" | jq .
+            exit 0
+          fi
+
+          echo "Unknown step. Use request_code | verify_code | register"
+          exit 1
