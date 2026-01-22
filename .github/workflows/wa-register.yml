@@ -42,46 +42,38 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "${WA_TOKEN}" ]; then
-            echo "Missing secret WA_TOKEN"; exit 1; fi
-          if [ -z "${PHONE_NUMBER_ID}" ]; then
-            echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
-          if [ -z "${STEP}" ]; then
-            echo "Missing input step"; exit 1; fi
+          if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
+          if [ -z "${PHONE_NUMBER_ID}" ]; then echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
 
           echo "Running step: ${STEP}"
           echo "Inputs: code_method='${CODE_METHOD}' code_len='${#CODE}' pin_len='${#PIN}'"
 
           if [ "${STEP}" = "request_code" ]; then
-            if [ -z "${CODE_METHOD}" ]; then
-              echo "Missing input code_method (sms or voice)"; exit 1; fi
+            if [ -z "${CODE_METHOD}" ]; then echo "Missing input code_method"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "{\"code_method\":\"${CODE_METHOD}\",\"language\":\"en\"}" | jq .
+              --data-urlencode "code_method=${CODE_METHOD}" \
+              --data-urlencode "language=en" | jq .
             exit 0
           fi
 
           if [ "${STEP}" = "verify_code" ]; then
-            if [ -z "${CODE}" ]; then
-              echo "Missing input code. Go to Actions → Run workflow → fill the 'code' field."; exit 1; fi
+            if [ -z "${CODE}" ]; then echo "Missing input code"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "{\"code\":\"${CODE}\"}" | jq .
+              --data-urlencode "code=${CODE}" | jq .
             exit 0
           fi
 
           if [ "${STEP}" = "register" ]; then
-            if [ -z "${PIN}" ]; then
-              echo "Missing input pin. Go to Actions → Run workflow → fill the 'pin' field."; exit 1; fi
+            if [ -z "${PIN}" ]; then echo "Missing input pin"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "{\"messaging_product\":\"whatsapp\",\"pin\":\"${PIN}\"}" | jq .
+              --data-urlencode "messaging_product=whatsapp" \
+              --data-urlencode "pin=${PIN}" | jq .
             exit 0
           fi
 
