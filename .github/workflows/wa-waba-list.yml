@@ -1,4 +1,4 @@
-name: WhatsApp List Phone Numbers
+name: WhatsApp List WABAs
 
 on:
   workflow_dispatch: {}
@@ -7,12 +7,12 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: List WABA(s) visible to token
+      - name: List owned WhatsApp Business Accounts
         shell: bash
         env:
           WA_TOKEN: ${{ secrets.WA_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
-          curl -sS "https://graph.facebook.com/v20.0/me?fields=whatsapp_business_accounts" \
+          BUSINESS_ID="1573867183545650"
+          curl -sS "https://graph.facebook.com/v20.0/${BUSINESS_ID}/owned_whatsapp_business_accounts" \
             -H "Authorization: Bearer ${WA_TOKEN}"
