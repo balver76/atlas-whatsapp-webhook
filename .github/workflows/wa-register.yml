@@ -51,8 +51,8 @@ jobs:
             if [ -z "${CODE_METHOD}" ]; then echo "Missing input code_method"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
-              -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "access_token=${WA_TOKEN}" \
               --data-urlencode "code_method=${CODE_METHOD}" \
               --data-urlencode "language=en_US"
             exit 0
@@ -62,8 +62,8 @@ jobs:
             if [ -z "${CODE}" ]; then echo "Missing input code"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
-              -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "access_token=${WA_TOKEN}" \
               --data-urlencode "code=${CODE}"
             exit 0
           fi
@@ -72,9 +72,10 @@ jobs:
             if [ -z "${PIN}" ]; then echo "Missing input pin"; exit 1; fi
 
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
-              -H "Authorization: Bearer ${WA_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "{\"messaging_product\":\"whatsapp\",\"pin\":\"${PIN}\"}"
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "access_token=${WA_TOKEN}" \
+              --data-urlencode "messaging_product=whatsapp" \
+              --data-urlencode "pin=${PIN}"
             exit 0
           fi
 
