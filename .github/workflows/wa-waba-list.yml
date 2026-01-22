@@ -7,7 +7,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: List WABA(s) this token can see
+      - name: List WABA(s) visible to token
         shell: bash
         env:
           WA_TOKEN: ${{ secrets.WA_TOKEN }}
@@ -15,5 +15,5 @@ jobs:
           set -euo pipefail
           if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
 
-          curl -sS "https://graph.facebook.com/v20.0/me/whatsapp_business_accounts" \
+          curl -sS "https://graph.facebook.com/v20.0/me?fields=whatsapp_business_accounts" \
             -H "Authorization: Bearer ${WA_TOKEN}"
