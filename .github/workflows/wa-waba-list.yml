@@ -1,0 +1,17 @@
+name: WhatsApp List Phone Numbers
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List WABA(s) this token can see
+        shell: bash
+        env:
+          WA_TOKEN: ${{ secrets.WA_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
+          curl -sS "https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${WA_TOKEN}"
