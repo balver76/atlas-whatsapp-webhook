@@ -7,7 +7,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: List owned WhatsApp Business Accounts
+      - name: List owned WhatsApp Business Accounts (WABAs) for the Business
         shell: bash
         env:
           WA_TOKEN: ${{ secrets.WA_TOKEN }}
