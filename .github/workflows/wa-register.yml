@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       step:
-        description: "Which step to run: request_code | verify_code | register"
+        description: "Which step to run? request_code | verify_code | register"
         required: true
         default: "request_code"
       code_method:
-        description: "sms or voice (only used for request_code)"
+        description: "sms or voice (needed for request_code)"
         required: false
         default: "sms"
       code:
-        description: "6-digit code received by SMS/voice (only for verify_code)"
+        description: "The 4-8 digit code you received (needed for verify_code)"
         required: false
         default: ""
       pin:
-        description: "6-digit two-step verification PIN you choose (only for register)"
+        description: "Your 6-digit PIN for /register (needed for register)"
         required: false
         default: ""
 
@@ -24,6 +24,13 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      - name: Ensure jq is available
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+          fi
+
       - name: Run step
         env:
           WA_TOKEN: ${{ secrets.WA_TOKEN }}
@@ -33,16 +40,26 @@ jobs:
           CODE: ${{ inputs.code }}
           PIN: ${{ inputs.pin }}
         run: |
-          set -e
+          set -euo pipefail
 
-          if [ -z "$WA_TOKEN" ]; then
-            echo "Missing secret WA_TOKEN"; exit 1; fi
-          if [ -z "$PHONE_NUMBER_ID" ]; then
-            echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
+          if [ -z "${WA_TOKEN:-}" ]; then
+            echo "Missing secret WA_TOKEN"
+            exit 1
+          fi
 
-          echo "Running step: $STEP"
+          if [ -z "${PHONE_NUMBER_ID:-}" ]; then
+            echo "Missing secret PHONE_NUMBER_ID"
+            exit 1
+          fi
 
-          if [ "$STEP" = "request_code" ]; then
+          echo "Running step: ${STEP}"
+
+          if [ "${STEP}" = "request_code" ]; then
+            if [ -z "${CODE_METHOD:-}" ]; then
+              echo "Missing input code_method (sms|voice)"
+              exit 1
+            fi
+
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/json" \
@@ -50,8 +67,12 @@ jobs:
             exit 0
           fi
 
-          if [ "$STEP" = "verify_code" ]; then
-            if [ -z "$CODE" ]; then echo "Missing input code"; exit 1; fi
+          if [ "${STEP}" = "verify_code" ]; then
+            if [ -z "${CODE:-}" ]; then
+              echo "Missing input code"
+              exit 1
+            fi
+
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/json" \
@@ -59,8 +80,12 @@ jobs:
             exit 0
           fi
 
-          if [ "$STEP" = "register" ]; then
-            if [ -z "$PIN" ]; then echo "Missing input pin"; exit 1; fi
+          if [ "${STEP}" = "register" ]; then
+            if [ -z "${PIN:-}" ]; then
+              echo "Missing input pin (6 digits)"
+              exit 1
+            fi
+
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
               -H "Authorization: Bearer ${WA_TOKEN}" \
               -H "Content-Type: application/json" \
