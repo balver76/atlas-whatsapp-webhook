@@ -6,22 +6,17 @@ on:
       step:
         description: "Which step to run? request_code | verify_code | register"
         required: true
-        default: "request_code"
-        type: choice
-        options:
-          - request_code
-          - verify_code
-          - register
+        default: "register"
       code_method:
-        description: "sms or voice (used only for request_code)"
+        description: "sms or voice (only for request_code)"
         required: false
         default: "sms"
       code:
-        description: "The code you received (used only for verify_code)"
+        description: "The 4-8 digit code you received (only for verify_code)"
         required: false
         default: ""
       pin:
-        description: "Two-step verification PIN (used only for register) e.g. 123456"
+        description: "6-digit two-step verification PIN (only for register, if enabled)"
         required: false
         default: ""
 
@@ -30,54 +25,57 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run step
-        shell: bash
         env:
           WA_TOKEN: ${{ secrets.WA_TOKEN }}
           PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
-          STEP: ${{ github.event.inputs.step }}
-          CODE_METHOD: ${{ github.event.inputs.code_method }}
-          CODE: ${{ github.event.inputs.code }}
-          PIN: ${{ github.event.inputs.pin }}
+          STEP: ${{ inputs.step }}
+          CODE_METHOD: ${{ inputs.code_method }}
+          CODE: ${{ inputs.code }}
+          PIN: ${{ inputs.pin }}
         run: |
           set -euo pipefail
+
+          if [ -z "${WA_TOKEN:-}" ]; then
+            echo "Missing secret WA_TOKEN"; exit 1; fi
+          if [ -z "${PHONE_NUMBER_ID:-}" ]; then
+            echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
 
           echo "Running step: ${STEP}"
           echo "Inputs: code_method='${CODE_METHOD}' code_len='${#CODE}' pin_len='${#PIN}'"
 
-          if [ -z "${WA_TOKEN}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
-          if [ -z "${PHONE_NUMBER_ID}" ]; then echo "Missing secret PHONE_NUMBER_ID"; exit 1; fi
-
           if [ "${STEP}" = "request_code" ]; then
-            if [ -z "${CODE_METHOD}" ]; then echo "Missing input code_method"; exit 1; fi
-
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/request_code" \
-              -H "Content-Type: application/x-www-form-urlencoded" \
-              --data-urlencode "access_token=${WA_TOKEN}" \
-              --data-urlencode "code_method=${CODE_METHOD}" \
-              --data-urlencode "language=en_US"
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"code_method\":\"${CODE_METHOD}\",\"language\":\"en\"}" | jq .
             exit 0
           fi
 
           if [ "${STEP}" = "verify_code" ]; then
             if [ -z "${CODE}" ]; then echo "Missing input code"; exit 1; fi
-
             curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/verify_code" \
-              -H "Content-Type: application/x-www-form-urlencoded" \
-              --data-urlencode "access_token=${WA_TOKEN}" \
-              --data-urlencode "code=${CODE}"
+              -H "Authorization: Bearer ${WA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"code\":\"${CODE}\"}" | jq .
             exit 0
           fi
 
           if [ "${STEP}" = "register" ]; then
-            if [ -z "${PIN}" ]; then echo "Missing input pin"; exit 1; fi
-
-            curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
-              -H "Content-Type: application/x-www-form-urlencoded" \
-              --data-urlencode "access_token=${WA_TOKEN}" \
-              --data-urlencode "messaging_product=whatsapp" \
-              --data-urlencode "pin=${PIN}"
+            if [ -n "${PIN}" ]; then
+              # Two-step enabled -> send pin
+              curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
+                -H "Authorization: Bearer ${WA_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"messaging_product\":\"whatsapp\",\"pin\":\"${PIN}\"}" | jq .
+            else
+              # Two-step not enabled -> do NOT include pin at all
+              curl -sS -X POST "https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/register" \
+                -H "Authorization: Bearer ${WA_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"messaging_product\":\"whatsapp\"}" | jq .
+            fi
             exit 0
           fi
 
-          echo "Unknown step '${STEP}'"
+          echo "Unknown step. Use request_code | verify_code | register"
           exit 1
