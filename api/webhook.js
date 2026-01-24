@@ -1,81 +1,85 @@
-// /api/webhook.js
-
 export default async function handler(req, res) {
-  // --- GET: Meta verify (zaten çalışıyor) ---
+  // 1) Verification (GET)
   if (req.method === "GET") {
+    const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    console.log("🔥 WEBHOOK HIT: GET", req.url);
-
-    if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("✅ Webhook verified");
       return res.status(200).send(challenge);
     }
-    return res.status(403).send("Forbidden");
+    console.log("❌ Verify failed", { mode, token });
+    return res.sendStatus(403);
   }
 
-  // --- POST: incoming events ---
+  // 2) Incoming events (POST)
   if (req.method === "POST") {
-    console.log("🔥 WEBHOOK HIT: POST", req.url);
-
     try {
       const body = req.body;
-      // Payload’ı logla (kısaltmadan)
+      console.log("🔥 WEBHOOK HIT: POST /api/webhook");
       console.log("📦 BODY:", JSON.stringify(body));
 
-      // WhatsApp message geldi mi?
-      const entry = body?.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
+      const entry = body.entry?.[0];
+      const change = entry?.changes?.[0];
+      const value = change?.value;
 
+      // A) Status updates (sent/delivered/read)
+      const status = value?.statuses?.[0];
+      if (status) {
+        console.log(
+          "📮 STATUS:",
+          status.status,
+          "to:",
+          status.recipient_id,
+          "id:",
+          status.id
+        );
+      }
+
+      // B) Incoming messages
       const msg = value?.messages?.[0];
-      if (!msg) {
-        // status event vs olabilir; yine de 200 dön
-        return res.status(200).json({ ok: true, note: "No messages in payload" });
+      if (msg) {
+        const from = msg.from;
+        const text = msg.text?.body || "";
+        const type = msg.type;
+
+        console.log("✅ INCOMING:", { from, type, text });
+
+        // Only auto-reply for text messages
+        if (type === "text" && text) {
+          const replyText =
+            "Hi 👋 Atlas Taxi Cabs here.\n\nPlease reply with:\n1️⃣ Pickup\n2️⃣ Destination\n3️⃣ Date & time\n4️⃣ Passengers\n\n(Prices shown in WhatsApp apply only for Airports & Central London.)\nFor anything else please call 01920 282828.";
+
+          const resp = await fetch(
+            `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${process.env.WA_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: from,
+                text: { body: replyText },
+              }),
+            }
+          );
+
+          const data = await resp.json();
+          console.log("➡️ Send message response:", data);
+        }
       }
 
-      const from = msg.from; // kullanıcı numarası (E164, country code ile)
-      const text = msg?.text?.body || "";
-
-      console.log("✅ Incoming message from:", from, "text:", text);
-
-      // --- Auto reply gönder ---
-      const token = process.env.WHATSAPP_TOKEN;
-      const phoneNumberId = process.env.PHONE_NUMBER_ID;
-
-      if (!token || !phoneNumberId) {
-        console.log("❌ Missing env: WHATSAPP_TOKEN or PHONE_NUMBER_ID");
-        return res.status(200).json({ ok: true, note: "Missing env vars" });
-      }
-
-      // Basit otomatik cevap (şimdilik sabit)
-      const replyText =
-        "Hi! Atlas Taxicabs 👋\n\nTo book, please reply with:\n1) Pickup\n2) Destination\n3) Date & time\n4) Passengers";
-
-      const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: from,
-          text: { body: replyText },
-        }),
-      });
-
-      const data = await resp.json();
-      console.log("➡️ Send message response:", JSON.stringify(data));
-
-      return res.status(200).json({ ok: true, sent: data });
+      return res.sendStatus(200);
     } catch (err) {
-      console.log("💥 ERROR:", err?.message || err);
-      return res.status(200).json({ ok: false, error: String(err) }); // Meta için yine 200
+      console.error("❌ Error:", err);
+      return res.sendStatus(500);
     }
   }
 
-  // diğer methodlar
-  return res.status(405).send("Method Not Allowed");
+  return res.sendStatus(405);
 }
