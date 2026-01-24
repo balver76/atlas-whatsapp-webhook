@@ -1,0 +1,45 @@
+name: WhatsApp Subscribe Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "check or subscribe"
+        required: true
+        default: "check"
+        type: choice
+        options:
+          - check
+          - subscribe
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check/Subscribe WABA
+        shell: bash
+        env:
+          WA_TOKEN: ${{ secrets.WA_TOKEN }}
+          WABA_ID: "876846731398003"
+          APP_ID: "1986840368550963"
+        run: |
+          set -euo pipefail
+
+          if [ -z "${WA_TOKEN:-}" ]; then echo "Missing secret WA_TOKEN"; exit 1; fi
+
+          echo "WABA_ID=${WABA_ID}"
+          echo "APP_ID=${APP_ID}"
+          echo "Action=${{ inputs.action }}"
+
+          echo "---- subscribed_apps (GET) ----"
+          curl -sS -X GET "https://graph.facebook.com/v20.0/${WABA_ID}/subscribed_apps" \
+            -H "Authorization: Bearer ${WA_TOKEN}" | jq .
+
+          if [ "${{ inputs.action }}" = "subscribe" ]; then
+            echo "---- subscribed_apps (POST subscribe) ----"
+            curl -sS -X POST "https://graph.facebook.com/v20.0/${WABA_ID}/subscribed_apps" \
+              -H "Authorization: Bearer ${WA_TOKEN}" | jq .
+            echo "---- subscribed_apps (GET after subscribe) ----"
+            curl -sS -X GET "https://graph.facebook.com/v20.0/${WABA_ID}/subscribed_apps" \
+              -H "Authorization: Bearer ${WA_TOKEN}" | jq .
+          fi
