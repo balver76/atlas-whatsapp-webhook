@@ -1,13 +1,34 @@
 export default async function handler(req, res) {
-  // Helper: end response safely (no Express methods)
   const end = (statusCode, body = "OK", headers = {}) => {
     res.statusCode = statusCode;
     Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
     res.end(body);
   };
 
-  // GET: webhook verification
+  // GET: webhook verification + DEBUG
   if (req.method === "GET") {
+    // 🔍 DEBUG endpoint: /api/webhook?debug=1
+    if (req.query?.debug === "1") {
+      const phoneIdLen = (process.env.PHONE_NUMBER_ID || "").length;
+      const tokenLen = (process.env.WA_TOKEN || "").length;
+      const verifyLen = (process.env.VERIFY_TOKEN || "").length;
+
+      return end(
+        200,
+        JSON.stringify(
+          {
+            env: "ok",
+            PHONE_NUMBER_ID_len: phoneIdLen,
+            WA_TOKEN_len: tokenLen,
+            VERIFY_TOKEN_len: verifyLen,
+          },
+          null,
+          2
+        ),
+        { "Content-Type": "application/json" }
+      );
+    }
+
     const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "";
 
     const mode = req.query?.["hub.mode"];
@@ -34,7 +55,7 @@ export default async function handler(req, res) {
       const change = entry?.changes?.[0];
       const value = change?.value;
 
-      // A) Log status updates (sent/delivered/read)
+      // Log status updates
       const status = value?.statuses?.[0];
       if (status) {
         console.log("📮 STATUS:", {
@@ -45,7 +66,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // B) Handle incoming messages
+      // Incoming message
       const msg = value?.messages?.[0];
       if (msg) {
         const from = msg.from;
@@ -54,7 +75,6 @@ export default async function handler(req, res) {
 
         console.log("✅ INCOMING:", { from, type, text });
 
-        // Only auto-reply for text messages
         if (type === "text" && text && from) {
           const replyText =
             "Hi 👋 Atlas Taxi Cabs here.\n\nPlease reply with:\n1️⃣ Pickup\n2️⃣ Destination\n3️⃣ Date & time\n4️⃣ Passengers\n\n(Prices shown in WhatsApp apply only for Airports & Central London.)\nFor anything else please call 01920 282828.";
@@ -62,16 +82,13 @@ export default async function handler(req, res) {
           const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || "";
           const WA_TOKEN = process.env.WA_TOKEN || "";
 
-          // Log env presence (without leaking token)
           console.log("🔧 ENV CHECK:", {
-            has_PHONE_NUMBER_ID: !!PHONE_NUMBER_ID,
-            has_WA_TOKEN: !!WA_TOKEN,
+            PHONE_NUMBER_ID_len: PHONE_NUMBER_ID.length,
+            WA_TOKEN_len: WA_TOKEN.length,
           });
 
           if (!PHONE_NUMBER_ID || !WA_TOKEN) {
-            console.log(
-              "❌ Missing env vars. Ensure PHONE_NUMBER_ID and WA_TOKEN exist in Vercel Environment Variables."
-            );
+            console.log("❌ Missing env vars. Ensure PHONE_NUMBER_ID and WA_TOKEN are set in Vercel (Production).");
             return end(200, "OK");
           }
 
@@ -90,9 +107,7 @@ export default async function handler(req, res) {
             }),
           });
 
-          // IMPORTANT: clone before reading body, so we can log raw + json safely
           const respClone = resp.clone();
-
           const data = await resp.json().catch(() => ({}));
           const raw = await respClone.text().catch(() => "");
 
@@ -113,6 +128,5 @@ export default async function handler(req, res) {
     }
   }
 
-  // Other methods
   return end(405, "Method Not Allowed", { Allow: "GET, POST" });
 }
