@@ -1,74 +1,81 @@
-module.exports = async (req, res) => {
- console.log("🔥 WEBHOOK HIT:", req.method, req.url);
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "atlas_verify_12345";
+// /api/webhook.js
 
-  const url = new URL(req.url, "https://example.com");
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
-
+export default async function handler(req, res) {
+  // --- GET: Meta verify (zaten çalışıyor) ---
   if (req.method === "GET") {
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      return res.status(200).send(challenge || "");
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+
+    console.log("🔥 WEBHOOK HIT: GET", req.url);
+
+    if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
+      return res.status(200).send(challenge);
     }
     return res.status(403).send("Forbidden");
   }
-if (req.method === "POST") {
-  console.log("🔥 WEBHOOK HIT:", req.method, req.url);
 
-  // Acknowledge fast
-  res.status(200).json({ received: true });
+  // --- POST: incoming events ---
+  if (req.method === "POST") {
+    console.log("🔥 WEBHOOK HIT: POST", req.url);
 
-  try {
-    const WA_TOKEN = process.env.WHATSAPP_TOKEN || "";
-    const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || "";
+    try {
+      const body = req.body;
+      // Payload’ı logla (kısaltmadan)
+      console.log("📦 BODY:", JSON.stringify(body));
 
-    const body = req.body || {};
-    const change = body?.entry?.[0]?.changes?.[0]?.value;
-    const msg = change?.messages?.[0];
-    if (!msg) return;
+      // WhatsApp message geldi mi?
+      const entry = body?.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
 
-    const from = msg.from;
-    const text = (msg?.text?.body || "").trim().toLowerCase();
-
-    // Only respond to greetings for now
-    if (["hi", "hello", "hey", "menu", "start"].includes(text)) {
-      const reply =
-        `Welcome to Atlas Taxicabs 🚖\n\n` +
-        `Fixed prices are available ONLY for Airports & Central London from Ware and nearby areas.\n` +
-        `For any other journeys or exact quotes, please call Live Phone Booking: 01920 282828.\n\n` +
-        `Reply with:\n` +
-        `"Price Heathrow 2 day"\n` +
-        `or\n` +
-        `"Price Gatwick 6 night"\n\n` +
-        `Daytime: Mon–Sat 06:30–22:00\nNight: Mon–Sat 22:00–06:30\nSunday: Night rates all day.\n\n` +
-        `We will confirm your booking as soon as possible.`;
-
-      if (!WA_TOKEN || !PHONE_NUMBER_ID) {
-        console.log("Missing WHATSAPP_TOKEN or PHONE_NUMBER_ID");
-        return;
+      const msg = value?.messages?.[0];
+      if (!msg) {
+        // status event vs olabilir; yine de 200 dön
+        return res.status(200).json({ ok: true, note: "No messages in payload" });
       }
 
-      await fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
+      const from = msg.from; // kullanıcı numarası (E164, country code ile)
+      const text = msg?.text?.body || "";
+
+      console.log("✅ Incoming message from:", from, "text:", text);
+
+      // --- Auto reply gönder ---
+      const token = process.env.WHATSAPP_TOKEN;
+      const phoneNumberId = process.env.PHONE_NUMBER_ID;
+
+      if (!token || !phoneNumberId) {
+        console.log("❌ Missing env: WHATSAPP_TOKEN or PHONE_NUMBER_ID");
+        return res.status(200).json({ ok: true, note: "Missing env vars" });
+      }
+
+      // Basit otomatik cevap (şimdilik sabit)
+      const replyText =
+        "Hi! Atlas Taxicabs 👋\n\nTo book, please reply with:\n1) Pickup\n2) Destination\n3) Date & time\n4) Passengers";
+
+      const resp = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${WA_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
           to: from,
-          type: "text",
-          text: { body: reply },
+          text: { body: replyText },
         }),
       });
+
+      const data = await resp.json();
+      console.log("➡️ Send message response:", JSON.stringify(data));
+
+      return res.status(200).json({ ok: true, sent: data });
+    } catch (err) {
+      console.log("💥 ERROR:", err?.message || err);
+      return res.status(200).json({ ok: false, error: String(err) }); // Meta için yine 200
     }
-  } catch (e) {
-    console.log("POST handler error:", e);
   }
-  return;
-}
 
-
+  // diğer methodlar
   return res.status(405).send("Method Not Allowed");
-};
+}
