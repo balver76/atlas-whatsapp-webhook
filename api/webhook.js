@@ -174,37 +174,43 @@ export default async function handler(req, res) {
           return end(200, "OK");
         }
 
-        // Step selection
-        if (state.step === 0) {
-          if (t === "1") {
-            state.step = 1;
-            await kvSet(stateKey, state);
-            await sendText(from, "Please enter your pickup address:");
-            return end(200, "OK");
-          }
-          if (t === "2") {
-            state.step = 2;
-            await kvSet(stateKey, state);
-            await sendText(from, "Please enter your destination:");
-            return end(200, "OK");
-          }
-          if (t === "3") {
-            state.step = 3;
-            await kvSet(stateKey, state);
-            await sendText(from, "Please enter date & time (e.g., 26/01 18:30):");
-            return end(200, "OK");
-          }
-          if (t === "4") {
-            state.step = 4;
-            await kvSet(stateKey, state);
-            await sendText(from, "How many passengers?");
-            return end(200, "OK");
-          }
+      // Step selection
+if (state.step === 0) {
+  if (t === "1") {
+    state.step = 1;
+    await kvSet(stateKey, state);
+    await sendText(from, "Please enter your pickup address:");
+    return end(200, "OK");
+  }
+  if (t === "2") {
+    state.step = 2;
+    await kvSet(stateKey, state);
+    await sendText(from, "Please enter your destination:");
+    return end(200, "OK");
+  }
+  if (t === "3") {
+    state.step = 3;
+    await kvSet(stateKey, state);
+    await sendText(from, "Please enter date & time (e.g., 26/01 18:30):");
+    return end(200, "OK");
+  }
+  if (t === "4") {
+    state.step = 4;
+    await kvSet(stateKey, state);
+    await sendText(from, "How many passengers?");
+    return end(200, "OK");
+  }
 
-          // default show menu
-          await sendText(from, menuText);
-          return end(200, "OK");
-        }
+  // ✅ NEW BEHAVIOR:
+  // If user typed anything else, assume it's the pickup address and move forward
+  // (this prevents going back to menu)
+  state.pickup = text;
+  state.step = 2; // next ask destination
+  await kvSet(stateKey, state);
+  await sendText(from, "✅ Pickup saved. Please enter your destination:");
+  return end(200, "OK");
+}
+
 
         // Collect fields
         if (state.step === 1) {
