@@ -1,132 +1,134 @@
+const sessions = new Map();
+
 export default async function handler(req, res) {
-  const end = (statusCode, body = "OK", headers = {}) => {
-    res.statusCode = statusCode;
-    Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
+  const end = (code, body = "OK") => {
+    res.statusCode = code;
     res.end(body);
   };
 
-  // GET: webhook verification + DEBUG
+  /* VERIFY */
   if (req.method === "GET") {
-    // 🔍 DEBUG endpoint: /api/webhook?debug=1
-    if (req.query?.debug === "1") {
-      const phoneIdLen = (process.env.PHONE_NUMBER_ID || "").length;
-      const tokenLen = (process.env.WA_TOKEN || "").length;
-      const verifyLen = (process.env.VERIFY_TOKEN || "").length;
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-      return end(
-        200,
-        JSON.stringify(
-          {
-            env: "ok",
-            PHONE_NUMBER_ID_len: phoneIdLen,
-            WA_TOKEN_len: tokenLen,
-            VERIFY_TOKEN_len: verifyLen,
-          },
-          null,
-          2
-        ),
-        { "Content-Type": "application/json" }
-      );
+    if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
+      return end(200, challenge);
     }
-
-    const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "";
-
-    const mode = req.query?.["hub.mode"];
-    const token = req.query?.["hub.verify_token"];
-    const challenge = req.query?.["hub.challenge"];
-
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("✅ Webhook verified");
-      return end(200, String(challenge || ""));
-    }
-
-    console.log("❌ Verify failed", { mode, token });
     return end(403, "Forbidden");
   }
 
-  // POST: incoming events
+  /* INCOMING MESSAGE */
   if (req.method === "POST") {
     try {
-      const body = req.body || {};
-      console.log("🔥 WEBHOOK HIT: POST /api/webhook");
-      console.log("📦 BODY:", JSON.stringify(body));
-
-      const entry = body.entry?.[0];
+      const entry = req.body?.entry?.[0];
       const change = entry?.changes?.[0];
       const value = change?.value;
+      const msg = value?.messages?.[0];
 
-      // Log status updates
-      const status = value?.statuses?.[0];
-      if (status) {
-        console.log("📮 STATUS:", {
-          status: status.status,
-          to: status.recipient_id,
-          id: status.id,
-          timestamp: status.timestamp,
-        });
+      if (!msg || msg.type !== "text") return end(200);
+
+      const from = msg.from;
+      const text = msg.text.body.trim();
+
+      if (!sessions.has(from)) {
+        sessions.set(from, { step: "menu", data: {} });
       }
 
-      // Incoming message
-      const msg = value?.messages?.[0];
-      if (msg) {
-        const from = msg.from;
-        const type = msg.type;
-        const text = msg.text?.body || "";
+      const session = sessions.get(from);
+      let reply = "";
 
-        console.log("✅ INCOMING:", { from, type, text });
+      /* MENU */
+      if (session.step === "menu") {
+        reply =
+          "Hi 👋 Atlas Taxi Cabs here.\n\n" +
+          "Reply with:\n" +
+          "1️⃣ Pickup\n" +
+          "2️⃣ Destination\n" +
+          "3️⃣ Date & Time\n" +
+          "4️⃣ Passengers\n\n" +
+          "(Prices shown in WhatsApp apply only for Airports & Central London.)\n" +
+          "For anything else please call 01920 282828.";
+        session.step = "await_choice";
+      }
 
-        if (type === "text" && text && from) {
-          const replyText =
-            "Hi 👋 Atlas Taxi Cabs here.\n\nPlease reply with:\n1️⃣ Pickup\n2️⃣ Destination\n3️⃣ Date & time\n4️⃣ Passengers\n\n(Prices shown in WhatsApp apply only for Airports & Central London.)\nFor anything else please call 01920 282828.";
-
-          const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || "";
-          const WA_TOKEN = process.env.WA_TOKEN || "";
-
-          console.log("🔧 ENV CHECK:", {
-            PHONE_NUMBER_ID_len: PHONE_NUMBER_ID.length,
-            WA_TOKEN_len: WA_TOKEN.length,
-          });
-
-          if (!PHONE_NUMBER_ID || !WA_TOKEN) {
-            console.log("❌ Missing env vars. Ensure PHONE_NUMBER_ID and WA_TOKEN are set in Vercel (Production).");
-            return end(200, "OK");
-          }
-
-          const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
-
-          const resp = await fetch(url, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${WA_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messaging_product: "whatsapp",
-              to: from,
-              text: { body: replyText },
-            }),
-          });
-
-          const respClone = resp.clone();
-          const data = await resp.json().catch(() => ({}));
-          const raw = await respClone.text().catch(() => "");
-
-          console.log("➡️ Send message response (status):", resp.status);
-          console.log("➡️ Send message response (raw):", raw);
-          console.log("➡️ Send message response (json):", data);
-
-          if (data?.error) {
-            console.log("❌ WHATSAPP ERROR FULL:", JSON.stringify(data));
-          }
+      /* CHOICE */
+      else if (session.step === "await_choice") {
+        if (text === "1") {
+          reply = "📍 Please enter your pickup address.";
+          session.step = "pickup";
+        } else {
+          reply = "Please reply with 1️⃣ to start booking.";
         }
       }
 
-      return end(200, "OK");
-    } catch (err) {
-      console.error("❌ Error:", err);
-      return end(500, "Internal Server Error");
+      else if (session.step === "pickup") {
+        session.data.pickup = text;
+        reply = "🎯 Please enter your destination.";
+        session.step = "destination";
+      }
+
+      else if (session.step === "destination") {
+        session.data.destination = text;
+        reply = "🗓 Please enter date & time (e.g. 25 Jan 10:30).";
+        session.step = "datetime";
+      }
+
+      else if (session.step === "datetime") {
+        session.data.datetime = text;
+        reply = "👥 How many passengers?";
+        session.step = "passengers";
+      }
+
+      else if (session.step === "passengers") {
+        session.data.passengers = text;
+
+        reply =
+          "✅ Please confirm your booking:\n\n" +
+          `📍 Pickup: ${session.data.pickup}\n` +
+          `🎯 Destination: ${session.data.destination}\n` +
+          `🗓 Date & Time: ${session.data.datetime}\n` +
+          `👥 Passengers: ${session.data.passengers}\n\n` +
+          "Reply YES to confirm or NO to cancel.";
+
+        session.step = "confirm";
+      }
+
+      else if (session.step === "confirm") {
+        if (text.toUpperCase() === "YES") {
+          reply =
+            "✅ Thank you! Your request has been received.\n" +
+            "We will confirm your booking shortly via message or call.";
+          sessions.delete(from);
+        } else {
+          reply = "❌ Booking cancelled. Send Hi to start again.";
+          sessions.delete(from);
+        }
+      }
+
+      /* SEND MESSAGE */
+      await fetch(
+        `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.WA_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: from,
+            text: { body: reply },
+          }),
+        }
+      );
+
+      return end(200);
+    } catch (e) {
+      console.error(e);
+      return end(500, "Error");
     }
   }
 
-  return end(405, "Method Not Allowed", { Allow: "GET, POST" });
+  end(405, "Method Not Allowed");
 }
