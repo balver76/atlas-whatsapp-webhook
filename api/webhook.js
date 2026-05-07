@@ -76,6 +76,18 @@ export default async function handler(req, res) {
     return kvCmd(["SET", String(key), v]);
   };
 
+  const kvSetEx = async (key, value, seconds) => {
+    if (!key) return null;
+    const v = typeof value === "string" ? value : JSON.stringify(value);
+    return kvCmd(["SET", String(key), v, "EX", String(seconds)]);
+  };
+
+  const kvSetNxEx = async (key, value, seconds) => {
+    if (!key) return null;
+    const v = typeof value === "string" ? value : JSON.stringify(value);
+    return kvCmd(["SET", String(key), v, "EX", String(seconds), "NX"]);
+  };
+
   const kvDel = async (key) => {
     if (!key) return null;
     return kvCmd(["DEL", String(key)]);
@@ -254,11 +266,15 @@ export default async function handler(req, res) {
     const from = msg.from;
     const type = msg.type;
     const text = (msg.text?.body || "").trim();
+    const messageId = msg.id || "";
+    const messageTimestamp = Number(msg.timestamp || 0);
 
     console.log("✅ INCOMING:", {
       from,
       type,
       text,
+      messageId,
+      messageTimestamp,
     });
 
     console.log("🔧 ENV CHECK:", {
@@ -273,6 +289,41 @@ export default async function handler(req, res) {
 
     if (!from) {
       return end(200, "OK");
+    }
+
+    // ---------- Safety 1: ignore very old WhatsApp messages ----------
+    // WhatsApp timestamp is normally in seconds.
+    // If a message is older than 10 minutes, ignore it to prevent delayed old replies.
+    if (messageTimestamp) {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const ageSeconds = nowSeconds - messageTimestamp;
+
+      console.log("⏱️ Message age seconds:", ageSeconds);
+
+      if (ageSeconds > 10 * 60) {
+        console.log("🛑 Ignoring old WhatsApp message:", {
+          from,
+          messageId,
+          ageSeconds,
+        });
+        return end(200, "OK");
+      }
+    }
+
+    // ---------- Safety 2: duplicate WhatsApp message protection ----------
+    // If Meta retries the same message ID, we do not reply again.
+    if (messageId) {
+      const processedKey = `wa:processed:${messageId}`;
+
+      const firstTime = await kvSetNxEx(processedKey, "1", 24 * 60 * 60);
+
+      if (!firstTime) {
+        console.log("🛑 Duplicate WhatsApp message ignored:", {
+          from,
+          messageId,
+        });
+        return end(200, "OK");
+      }
     }
 
     // Only handle text messages
@@ -308,7 +359,7 @@ export default async function handler(req, res) {
         pax: "",
       };
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
       await sendText(from, menuText);
 
       return end(200, "OK");
@@ -318,21 +369,21 @@ export default async function handler(req, res) {
     if (state.step === 0) {
       if (t === "1") {
         state.step = 1;
-        await kvSet(stateKey, state);
+        await kvSetEx(stateKey, state, 60 * 60 * 6);
         await sendText(from, "Please enter your pickup address:");
         return end(200, "OK");
       }
 
       if (t === "2") {
         state.step = 2;
-        await kvSet(stateKey, state);
+        await kvSetEx(stateKey, state, 60 * 60 * 6);
         await sendText(from, "Please enter your destination:");
         return end(200, "OK");
       }
 
       if (t === "3") {
         state.step = 3;
-        await kvSet(stateKey, state);
+        await kvSetEx(stateKey, state, 60 * 60 * 6);
         await sendText(
           from,
           "Please enter date & time (e.g., 26/01 18:30):"
@@ -342,7 +393,7 @@ export default async function handler(req, res) {
 
       if (t === "4") {
         state.step = 4;
-        await kvSet(stateKey, state);
+        await kvSetEx(stateKey, state, 60 * 60 * 6);
         await sendText(from, "How many passengers?");
         return end(200, "OK");
       }
@@ -351,7 +402,7 @@ export default async function handler(req, res) {
       state.pickup = text;
       state.step = 2;
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
       await sendText(from, "✅ Pickup saved. Please enter your destination:");
 
       return end(200, "OK");
@@ -362,7 +413,7 @@ export default async function handler(req, res) {
       state.pickup = text;
       state.step = 2;
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
       await sendText(from, "✅ Pickup saved. Please enter your destination:");
 
       return end(200, "OK");
@@ -373,7 +424,7 @@ export default async function handler(req, res) {
       state.dest = text;
       state.step = 3;
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
       await sendText(
         from,
         "✅ Destination saved. Please enter date & time (e.g., 26/01 18:30):"
@@ -387,7 +438,7 @@ export default async function handler(req, res) {
       state.datetime = text;
       state.step = 4;
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
       await sendText(from, "✅ Date & time saved. How many passengers?");
 
       return end(200, "OK");
@@ -398,7 +449,7 @@ export default async function handler(req, res) {
       state.pax = text;
       state.step = 5;
 
-      await kvSet(stateKey, state);
+      await kvSetEx(stateKey, state, 60 * 60 * 6);
 
       await sendText(
         from,
